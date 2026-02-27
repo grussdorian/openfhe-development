@@ -72,3 +72,8 @@ test_detail.xml
 
 # Visual Studio Code
 .vscode
+
+# iOS 
+*.xcframework
+build-ios-*
+install-ios-*
