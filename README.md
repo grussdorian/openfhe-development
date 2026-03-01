@@ -1,6 +1,9 @@
 OpenFHE - Open-Source Fully Homomorphic Encryption Library
 =====================================
 
+# For android port see `openfhe_android`
+----
+
 Fully Homomorphic Encryption (FHE) is a powerful cryptographic primitive that enables performing computations over encrypted data without having access to the secret key.
 OpenFHE is an open-source FHE library that includes efficient implementations of all common FHE schemes:
   * Brakerski/Fan-Vercauteren (BFV) scheme for integer arithmetic
