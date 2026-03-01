@@ -821,4 +821,8 @@ install(FILES
 install(EXPORT OpenFHETargets DESTINATION "${INSTALL_CMAKE_DIR}" COMPONENT dev)
 # install(EXPORT OpenFHETargets DESTINATION "${INSTALL_CMAKE_DIR}" NAMESPACE OpenFHE:: COMPONENT dev)
 # Build iOS C bridge wrapper
-add_subdirectory(openfhe_ios)
+if(ANDROID)
+    add_subdirectory(openfhe_android)
+elseif(IOS)
+    add_subdirectory(openfhe_ios)
+endif()
