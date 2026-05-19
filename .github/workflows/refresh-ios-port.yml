@@ -1,0 +1,191 @@
+name: Refresh iOS port against upstream
+
+# Forward-merges the iOS port commits onto each new upstream OpenFHE tag,
+# builds for iOS device on a hosted macOS runner, and either opens a PR
+# (success) or files an Issue (failure). Keeps the port at most one week
+# behind upstream without manual intervention.
+#
+# Trigger:
+#   - Weekly cron (Monday 06:00 UTC)
+#   - Manual via the Actions tab (workflow_dispatch)
+#
+# Required secret:
+#   GITHUB_TOKEN is provided automatically by GitHub Actions and has the
+#   permissions configured below (contents:write, pull-requests:write,
+#   issues:write). No additional secrets needed.
+
+on:
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+    inputs:
+      target_tag:
+        description: "Optional upstream tag to forward-merge to (e.g. v1.5.2). Default: latest upstream tag."
+        required: false
+        type: string
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  forward-merge:
+    runs-on: macos-latest
+    timeout-minutes: 60
+    env:
+      UPSTREAM_URL: https://github.com/openfheorg/openfhe-development.git
+      FORK_PORT_BRANCH: ios-port
+
+    steps:
+      - name: Checkout fork (all history)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          # Use GITHUB_TOKEN so pushes back to the fork are authenticated.
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure git
+        run: |
+          git config user.name  "fheya-ios-port-bot"
+          git config user.email "fheya-ios-port-bot@users.noreply.github.com"
+
+      - name: Add upstream remote + fetch tags
+        run: |
+          git remote add upstream "$UPSTREAM_URL"
+          git fetch upstream --tags --quiet
+
+      - name: Resolve target upstream tag
+        id: target
+        run: |
+          if [ -n "${{ github.event.inputs.target_tag }}" ]; then
+            TAG="${{ github.event.inputs.target_tag }}"
+          else
+            # Latest semver-style tag from upstream
+            TAG=$(git tag --list 'v*' --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -n1)
+          fi
+          if [ -z "$TAG" ]; then
+            echo "::error::Could not resolve a target upstream tag"
+            exit 1
+          fi
+          BRANCH="ios-port-$TAG"
+          echo "tag=$TAG"     >> "$GITHUB_OUTPUT"
+          echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
+          echo "Resolved target: $TAG  (branch: $BRANCH)"
+
+      - name: Skip if branch already exists on origin
+        id: precheck
+        run: |
+          BRANCH="${{ steps.target.outputs.branch }}"
+          if git ls-remote --exit-code --heads origin "$BRANCH" >/dev/null 2>&1; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "Branch $BRANCH already exists on origin; nothing to do."
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Compute port commits (from ios-port branch)
+        if: steps.precheck.outputs.skip == 'false'
+        id: portcommits
+        run: |
+          git fetch origin "$FORK_PORT_BRANCH" --quiet
+          BASE=$(git merge-base "origin/$FORK_PORT_BRANCH" "origin/main")
+          # Port commits = ios-port's history not in main, oldest-first.
+          COMMITS=$(git log --reverse --format=%H "$BASE..origin/$FORK_PORT_BRANCH")
+          if [ -z "$COMMITS" ]; then
+            echo "::error::No port commits found on origin/$FORK_PORT_BRANCH ahead of origin/main"
+            exit 1
+          fi
+          echo "Will replay commits:"
+          echo "$COMMITS"
+          # Save newline-separated to env via temp file for later step.
+          printf '%s\n' "$COMMITS" > /tmp/port_commits.txt
+
+      - name: Create forward-merge branch + cherry-pick
+        if: steps.precheck.outputs.skip == 'false'
+        id: cherrypick
+        run: |
+          TAG="${{ steps.target.outputs.tag }}"
+          BRANCH="${{ steps.target.outputs.branch }}"
+
+          git checkout -b "$BRANCH" "refs/tags/$TAG"
+          STATUS=0
+          while IFS= read -r SHA; do
+            if ! git cherry-pick "$SHA"; then
+              echo "::error::Cherry-pick failed at $SHA"
+              git cherry-pick --abort || true
+              STATUS=1
+              break
+            fi
+          done < /tmp/port_commits.txt
+          echo "status=$STATUS" >> "$GITHUB_OUTPUT"
+          exit $STATUS
+
+      - name: Pre-flight build tools
+        if: steps.precheck.outputs.skip == 'false' && steps.cherrypick.outputs.status == '0'
+        run: |
+          brew install cmake || brew upgrade cmake || true
+          cmake --version
+          xcodebuild -version
+
+      - name: Build iOS device static lib
+        if: steps.precheck.outputs.skip == 'false' && steps.cherrypick.outputs.status == '0'
+        id: build
+        run: |
+          cd openfhe_ios
+          bash build_ios.sh device 2>&1 | tee /tmp/ios-build.log
+
+      - name: Push forward-merged branch
+        if: steps.precheck.outputs.skip == 'false' && steps.cherrypick.outputs.status == '0'
+        run: |
+          BRANCH="${{ steps.target.outputs.branch }}"
+          git push -u origin "$BRANCH"
+
+      - name: Open PR into ios-port
+        if: steps.precheck.outputs.skip == 'false' && steps.cherrypick.outputs.status == '0'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ steps.target.outputs.tag }}"
+          BRANCH="${{ steps.target.outputs.branch }}"
+          gh pr create \
+            --base ios-port \
+            --head "$BRANCH" \
+            --title "Refresh iOS port to OpenFHE $TAG" \
+            --body "$(cat <<EOF
+          Automated forward-merge by \`.github/workflows/refresh-ios-port.yml\`.
+
+          - Cherry-picked the iOS-port commits onto upstream \`$TAG\`.
+          - Built \`libopenfhe_ios.a\` + OpenFHE statics for iOS device on macOS-latest.
+
+          Merge this into \`ios-port\` to advance the canonical port branch.
+          See \`scripts/refresh-ios-port.sh\` if you need to repeat locally.
+          EOF
+          )"
+
+      - name: File Issue on failure
+        if: failure() && steps.precheck.outputs.skip == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ steps.target.outputs.tag }}"
+          BUILDLOG=""
+          if [ -f /tmp/ios-build.log ]; then
+            BUILDLOG=$(tail -120 /tmp/ios-build.log)
+          fi
+          gh issue create \
+            --title "iOS port refresh failed for OpenFHE $TAG" \
+            --label "ios-port,drift" \
+            --body "$(cat <<EOF
+          Automated forward-merge workflow could not produce a clean \`ios-port-$TAG\` branch.
+
+          Likely cause: cherry-pick conflict against upstream API drift, or the iOS C bridge no longer compiles against the new OpenFHE release.
+
+          Re-run via the Actions tab or run \`scripts/refresh-ios-port.sh $TAG\` locally to reproduce.
+
+          Tail of build log:
+          \`\`\`
+          $BUILDLOG
+          \`\`\`
+          EOF
+          )"
