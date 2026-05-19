@@ -89,11 +89,17 @@ jobs:
         id: portcommits
         run: |
           git fetch origin "$FORK_PORT_BRANCH" --quiet
-          BASE=$(git merge-base "origin/$FORK_PORT_BRANCH" "origin/main")
-          # Port commits = ios-port's history not in main, oldest-first.
-          COMMITS=$(git log --reverse --format=%H "$BASE..origin/$FORK_PORT_BRANCH")
+          git fetch upstream main --quiet
+          # Port commits = commits on origin/ios-port that
+          #   (a) are NOT reachable from upstream/main, and
+          #   (b) touch port-related paths (openfhe_ios/, .gitignore, CMakeLists.txt).
+          # Anchoring against upstream/main (not origin/main) avoids the trap
+          # where the fork's main already has the port merged in — that would
+          # make merge-base swallow the port commits.
+          COMMITS=$(git rev-list --reverse "origin/$FORK_PORT_BRANCH" ^upstream/main -- \
+                      openfhe_ios .gitignore CMakeLists.txt)
           if [ -z "$COMMITS" ]; then
-            echo "::error::No port commits found on origin/$FORK_PORT_BRANCH ahead of origin/main"
+            echo "::error::No port commits found on origin/$FORK_PORT_BRANCH ahead of upstream/main"
             exit 1
           fi
           echo "Will replay commits:"
@@ -175,7 +181,6 @@ jobs:
           fi
           gh issue create \
             --title "iOS port refresh failed for OpenFHE $TAG" \
-            --label "ios-port,drift" \
             --body "$(cat <<EOF
           Automated forward-merge workflow could not produce a clean \`ios-port-$TAG\` branch.
 
