@@ -1,5 +1,6 @@
 add_library(openfhe_android STATIC
     openfhe_android.cpp
+    execinfo.cpp
 )
 
 target_link_libraries(openfhe_android

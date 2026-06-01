@@ -15,11 +15,7 @@
 #include <cstring>
 #include <vector>
 
-// Stub for OpenFHE's get_call_stack() — Android doesn't support execinfo.h / backtrace()
-// Signature must match: std::vector<std::string> get_call_stack() noexcept  (C++ linkage)
-std::vector<std::string> get_call_stack() noexcept {
-    return {"(stack trace not available on Android)"};
-}
+
 
 // ================================================================
 // Helper: throw a Java exception from the last native error
