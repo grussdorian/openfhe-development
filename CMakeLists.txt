@@ -736,6 +736,10 @@ if(BUILD_UNITTESTS)
     set(UNITTESTMAIN ${PROJECT_SOURCE_DIR}/test/Main_TestAll.cpp)
 endif()
 
+if(ANDROID)
+    include_directories("${CMAKE_CURRENT_SOURCE_DIR}/openfhe_android/include")
+endif()
+
 add_subdirectory(src/core)
 add_subdirectory(src/pke)
 add_subdirectory(src/binfhe)
