@@ -17,11 +17,11 @@ build_one() {
     rm -rf "${BUILD_DIR}" "${INSTALL_DIR}"
 
     cmake -S "${SRC_DIR}" -B "${BUILD_DIR}" \
-        -DCMAKE_TOOLCHAIN_FILE=${NDK}/build/cmake/android.toolchain.cmake \
-        -DANDROID_ABI=${ABI} \
-        -DANDROID_PLATFORM=android-${API} \
-        -DCMAKE_BUILD_TYPE=${BUILD_TYPE} \
-        -DCMAKE_INSTALL_PREFIX=${INSTALL_DIR} \
+        -DCMAKE_TOOLCHAIN_FILE="${NDK}/build/cmake/android.toolchain.cmake" \
+        -DANDROID_ABI="${ABI}" \
+        -DANDROID_PLATFORM="android-${API}" \
+        -DCMAKE_BUILD_TYPE="${BUILD_TYPE}" \
+        -DCMAKE_INSTALL_PREFIX="${INSTALL_DIR}" \
         \
         -DBUILD_STATIC=ON \
         -DBUILD_SHARED=OFF \
