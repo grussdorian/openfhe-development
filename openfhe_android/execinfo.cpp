@@ -4,7 +4,6 @@
 #include <cstdlib>
 #include <cstring>
 #include <sstream>
-#include <iomanip>
 #include <vector>
 #include <string>
 
@@ -78,7 +77,13 @@ char** backtrace_symbols(void* const* buffer, int size) {
 }
 
 void backtrace_symbols_fd(void* const* buffer, int size, int fd) {
-    // Dummy stub to satisfy linker/header declaration if needed
+    // Intentionally unimplemented.
+    // OpenFHE's get_call_stack() only uses backtrace() + backtrace_symbols(),
+    // never backtrace_symbols_fd. This stub exists solely to satisfy the
+    // linker when execinfo.h declares the full POSIX API surface.
+    (void)buffer;
+    (void)size;
+    (void)fd;
 }
 
 } // extern "C"

@@ -7,7 +7,9 @@ plugins {
 android {
     namespace = "com.example.openfhetest"
     compileSdk = 36
-    ndkVersion = "30.0.14904198"
+    // NDK version — update to match your installed NDK.
+    // PR author used r30 (30.0.14904198); r29 (29.0.14206865) also works.
+    ndkVersion = "29.0.14206865"
     defaultConfig {
         applicationId = "com.example.openfhetest"
         minSdk = 29

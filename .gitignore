@@ -79,7 +79,5 @@ build-ios-*
 install-ios-*
 
 # Android
-build-*
-install-*
 openfhe_android/build-*
 openfhe_android/install-*
